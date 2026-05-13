@@ -11,7 +11,6 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -247,27 +246,34 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showExitDialog() {
-        val input = EditText(this).apply {
-            hint = "Masukkan password pengawas"
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or
-                    android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-            setPadding(48, 32, 48, 32)
+        val dialogView = layoutInflater.inflate(R.layout.dialog_exit, null)
+        val inputPassword = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.inputExitPassword)
+        val btnCancel = dialogView.findViewById<MaterialButton>(R.id.btnCancel)
+        val btnConfirmExit = dialogView.findViewById<MaterialButton>(R.id.btnConfirmExit)
+
+        val dialog = AlertDialog.Builder(this, com.google.android.material.R.style.ThemeOverlay_MaterialComponents_Dialog)
+            .setView(dialogView)
+            .setCancelable(false)
+            .create()
+
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+
+        btnCancel.setOnClickListener {
+            dialog.dismiss()
         }
 
-        AlertDialog.Builder(this)
-            .setTitle("Exit Mode Ujian")
-            .setMessage("Masukkan password pengawas untuk keluar.")
-            .setView(input)
-            .setPositiveButton("Keluar") { _, _ ->
-                if (input.text.toString() == exitPassword) {
-                    stopLockTask()
-                    finish()
-                } else {
-                    Toast.makeText(this, "Password salah", Toast.LENGTH_SHORT).show()
-                }
+        btnConfirmExit.setOnClickListener {
+            val enteredPassword = inputPassword.text.toString().trim()
+            if (enteredPassword == exitPassword) {
+                dialog.dismiss()
+                stopLockTask()
+                finish()
+            } else {
+                Toast.makeText(this, "Kode akses tidak valid. Silakan coba kembali.", Toast.LENGTH_SHORT).show()
             }
-            .setNegativeButton("Batal", null)
-            .show()
+        }
+
+        dialog.show()
     }
 
     @Deprecated("Deprecated in Java")
