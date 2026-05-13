@@ -1,78 +1,90 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:background="#FFFFFF"
-    android:padding="24dp">
+    android:background="@drawable/dialog_background">
 
-    <!-- Header -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Otorisasi Pengawas"
-        android:textSize="20sp"
-        android:textStyle="bold"
-        android:textColor="#1B2E4B"
-        android:textAlignment="center" />
-
-    <View
-        android:layout_width="60dp"
-        android:layout_height="3dp"
-        android:layout_gravity="center"
-        android:layout_marginTop="8dp"
-        android:background="#00BFA5" />
-
-    <!-- Deskripsi -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="Fitur ini hanya diperuntukkan bagi pengawas ujian. Silakan masukkan kode akses yang telah diberikan oleh koordinator."
-        android:textSize="14sp"
-        android:textColor="#555555"
-        android:textAlignment="center"
-        android:lineSpacingExtra="4dp" />
-
-    <!-- Input Password -->
-    <com.google.android.material.textfield.TextInputLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
-        android:hint="Kode Akses Pengawas">
-
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/inputExitPassword"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="textPassword" />
-
-    </com.google.android.material.textfield.TextInputLayout>
-
-    <!-- Buttons -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:orientation="horizontal"
-        android:gravity="end">
+        android:orientation="vertical"
+        android:padding="28dp">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnCancel"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
-            android:layout_width="wrap_content"
+        <!-- Header -->
+        <TextView
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Kembali"
-            android:textColor="#777777" />
+            android:text="Otorisasi Pengawas"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="#1B2E4B"
+            android:gravity="center" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnConfirmExit"
-            android:layout_width="wrap_content"
+        <View
+            android:layout_width="50dp"
+            android:layout_height="3dp"
+            android:layout_gravity="center"
+            android:layout_marginTop="8dp"
+            android:background="#00BFA5" />
+
+        <!-- Deskripsi -->
+        <TextView
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:text="Akhiri Sesi"
-            android:backgroundTint="#1B2E4B" />
+            android:layout_marginTop="16dp"
+            android:text="Fitur ini hanya diperuntukkan bagi pengawas ujian. Silakan masukkan kode akses yang telah diberikan oleh koordinator."
+            android:textSize="13sp"
+            android:textColor="#555555"
+            android:gravity="center"
+            android:lineSpacingExtra="3dp" />
+
+        <!-- Input Password -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:hint="Kode Akses Pengawas"
+            app:boxBackgroundMode="outline"
+            app:boxStrokeColor="#1B2E4B">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/inputExitPassword"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="textPassword"
+                android:textSize="14sp" />
+
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Buttons -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCancel"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Kembali"
+                android:textColor="#777777"
+                app:strokeColor="#CCCCCC" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnConfirmExit"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="12dp"
+                android:text="Akhiri Sesi"
+                android:backgroundTint="#1B2E4B" />
+
+        </LinearLayout>
 
     </LinearLayout>
 
-</LinearLayout>
+</ScrollView>

@@ -253,12 +253,19 @@ class MainActivity : AppCompatActivity() {
         val btnCancel = dialogView.findViewById<MaterialButton>(R.id.btnCancel)
         val btnConfirmExit = dialogView.findViewById<MaterialButton>(R.id.btnConfirmExit)
 
-        val dialog = AlertDialog.Builder(this, com.google.android.material.R.style.ThemeOverlay_MaterialComponents_Dialog)
+        val dialog = AlertDialog.Builder(this)
             .setView(dialogView)
             .setCancelable(false)
             .create()
 
-        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            // Set dialog width to 90% of screen
+            setLayout(
+                (resources.displayMetrics.widthPixels * 0.9).toInt(),
+                android.view.WindowManager.LayoutParams.WRAP_CONTENT
+            )
+        }
 
         btnCancel.setOnClickListener {
             dialog.dismiss()
@@ -276,6 +283,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         dialog.show()
+
+        // Set width after show() for it to take effect
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.85).toInt(),
+            android.view.WindowManager.LayoutParams.WRAP_CONTENT
+        )
     }
 
     @Deprecated("Deprecated in Java")
