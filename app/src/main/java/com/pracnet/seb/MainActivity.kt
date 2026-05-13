@@ -20,6 +20,7 @@ import com.google.android.material.button.MaterialButton
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 
 class MainActivity : AppCompatActivity() {
 
@@ -178,8 +179,9 @@ class MainActivity : AppCompatActivity() {
                     // Ambil quiz URL
                     val quizUrl = json.optString("quiz_url", "")
                     if (quizUrl.isNotBlank()) {
-                        val path = quizUrl.removePrefix(BASE_URL)
-                        targetUrl = "$BASE_URL/login/index.php?wantsurl=$path"
+                        // Encode path untuk wantsurl parameter
+                        val encodedPath = URLEncoder.encode(quizUrl, "UTF-8")
+                        targetUrl = "$BASE_URL/login/index.php?wantsurl=$encodedPath"
                     } else {
                         noExam = true
                     }
