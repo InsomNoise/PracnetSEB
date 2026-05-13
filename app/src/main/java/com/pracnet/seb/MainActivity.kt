@@ -119,10 +119,9 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                // Sembunyikan splash, tampilkan WebView
+                // Pastikan splash hilang dan progress bar selesai
                 splashView.visibility = View.GONE
                 errorView.visibility = View.GONE
-                webView.visibility = View.VISIBLE
                 progressBar.visibility = View.GONE
 
                 // Setelah login berhasil, Moodle redirect ke dashboard
@@ -154,10 +153,8 @@ class MainActivity : AppCompatActivity() {
 
         webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                if (webView.visibility == View.VISIBLE) {
-                    progressBar.visibility = if (newProgress < 100) View.VISIBLE else View.GONE
-                    progressBar.progress = newProgress
-                }
+                progressBar.visibility = if (newProgress < 100) View.VISIBLE else View.GONE
+                progressBar.progress = newProgress
             }
         }
     }
@@ -216,6 +213,10 @@ class MainActivity : AppCompatActivity() {
                 if (finalNoExam) {
                     showError(getString(R.string.no_exam_active))
                 } else {
+                    // Langsung tampilkan WebView dengan progress bar
+                    splashView.visibility = View.GONE
+                    webView.visibility = View.VISIBLE
+                    progressBar.visibility = View.VISIBLE
                     webView.loadUrl(finalUrl)
                 }
             }
