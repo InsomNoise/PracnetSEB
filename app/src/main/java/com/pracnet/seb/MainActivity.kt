@@ -20,7 +20,6 @@ import com.google.android.material.button.MaterialButton
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLEncoder
 
 class MainActivity : AppCompatActivity() {
 
@@ -37,6 +36,9 @@ class MainActivity : AppCompatActivity() {
 
     // Password dari remote config (fallback ke default)
     private var exitPassword = DEFAULT_EXIT_PASSWORD
+
+    // URL kuis dari remote config (akan di-load setelah login berhasil)
+    private var quizUrl: String? = null
 
     companion object {
         private const val BASE_URL = "https://prac.amn-lab.com"
@@ -122,6 +124,19 @@ class MainActivity : AppCompatActivity() {
                 errorView.visibility = View.GONE
                 webView.visibility = View.VISIBLE
                 progressBar.visibility = View.GONE
+
+                // Setelah login berhasil, Moodle redirect ke dashboard
+                // Detect ini dan langsung arahkan ke kuis
+                val currentUrl = url ?: return
+                if (quizUrl != null && (
+                    currentUrl.contains("/my/") ||
+                    currentUrl.contains("redirect=0") ||
+                    currentUrl.endsWith("/") && !currentUrl.contains("/login/")
+                )) {
+                    val targetQuiz = quizUrl
+                    quizUrl = null // Hanya redirect sekali
+                    view?.loadUrl(targetQuiz!!)
+                }
             }
 
             override fun onReceivedError(
@@ -179,9 +194,8 @@ class MainActivity : AppCompatActivity() {
                     // Ambil quiz URL
                     val quizUrl = json.optString("quiz_url", "")
                     if (quizUrl.isNotBlank()) {
-                        // Encode path untuk wantsurl parameter
-                        val encodedPath = URLEncoder.encode(quizUrl, "UTF-8")
-                        targetUrl = "$BASE_URL/login/index.php?wantsurl=$encodedPath"
+                        this@MainActivity.quizUrl = quizUrl
+                        targetUrl = FALLBACK_URL
                     } else {
                         noExam = true
                     }
