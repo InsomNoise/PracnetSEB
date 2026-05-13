@@ -11,6 +11,13 @@
         android:layout_height="match_parent"
         android:visibility="gone" />
 
+    <!-- Area tap rahasia di pojok kiri atas (di atas WebView) -->
+    <View
+        android:id="@+id/secretTapArea"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:layout_gravity="top|start" />
+
     <!-- Progress bar di atas -->
     <ProgressBar
         android:id="@+id/progressBar"

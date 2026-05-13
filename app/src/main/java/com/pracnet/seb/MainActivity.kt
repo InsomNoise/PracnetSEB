@@ -12,7 +12,6 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.EditText
-import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -44,7 +43,7 @@ class MainActivity : AppCompatActivity() {
         private const val CONFIG_URL = "$BASE_URL/seb-config.json"
         private const val FALLBACK_URL = "$BASE_URL/login/index.php"
         private const val ALLOWED_DOMAIN = "prac.amn-lab.com"
-        private const val CUSTOM_UA_SUFFIX = "PracnetSEBClient/1.0"
+        private const val CUSTOM_UA_SUFFIX = "SEB/3.0 PracnetSEBClient/1.0"
         private const val DEFAULT_EXIT_PASSWORD = "dosen2024"
         private const val TAP_THRESHOLD = 5
         private const val TAP_TIMEOUT_MS = 3000L
@@ -223,30 +222,27 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * Secret Exit Mechanism:
-     * Tap 5x cepat di pojok kiri atas layar (area 100dp x 100dp)
+     * Tap 5x cepat di pojok kiri atas layar (area 80dp x 80dp overlay)
      * → muncul dialog password → masukkan password → app keluar dari Kiosk Mode
      */
     @SuppressLint("ClickableViewAccessibility")
     private fun setupSecretExit() {
-        val rootView = findViewById<FrameLayout>(android.R.id.content)
-        rootView.setOnTouchListener { _, event ->
-            val threshold = (100 * resources.displayMetrics.density).toInt()
-            if (event.x < threshold && event.y < threshold) {
-                if (event.action == android.view.MotionEvent.ACTION_DOWN) {
-                    val now = System.currentTimeMillis()
-                    if (now - lastTapTime > TAP_TIMEOUT_MS) {
-                        tapCount = 0
-                    }
-                    tapCount++
-                    lastTapTime = now
+        val secretTapArea = findViewById<View>(R.id.secretTapArea)
+        secretTapArea.setOnTouchListener { _, event ->
+            if (event.action == android.view.MotionEvent.ACTION_DOWN) {
+                val now = System.currentTimeMillis()
+                if (now - lastTapTime > TAP_TIMEOUT_MS) {
+                    tapCount = 0
+                }
+                tapCount++
+                lastTapTime = now
 
-                    if (tapCount >= TAP_THRESHOLD) {
-                        tapCount = 0
-                        showExitDialog()
-                    }
+                if (tapCount >= TAP_THRESHOLD) {
+                    tapCount = 0
+                    showExitDialog()
                 }
             }
-            false
+            true // Consume event di area ini
         }
     }
 
