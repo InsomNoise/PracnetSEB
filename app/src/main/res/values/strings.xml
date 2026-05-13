@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Pracnet SEB</string>
+    <string name="loading_text">Memuat ujian…</string>
+    <string name="error_connection">Tidak dapat terhubung ke server.\nPeriksa koneksi internet Anda.</string>
+    <string name="no_exam_active">Tidak ada ujian aktif saat ini.\nHubungi pengawas jika ini adalah kesalahan.</string>
+    <string name="retry">Coba Lagi</string>
 </resources>
