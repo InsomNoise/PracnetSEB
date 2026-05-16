@@ -55,16 +55,20 @@ class MainActivity : AppCompatActivity() {
     private var violationCount = 0
     private val handler = Handler(Looper.getMainLooper())
     private var isPinned = false
+    private var studentId = ""  // Akan diambil dari halaman login
+    private var isBanned = false
 
     companion object {
         private const val BASE_URL = "https://prac.amn-lab.com"
         private const val CONFIG_URL = "$BASE_URL/seb-config.json"
+        private const val VIOLATION_URL = "$BASE_URL/seb-violation.php"
         private const val FALLBACK_URL = "$BASE_URL/login/index.php"
         private const val ALLOWED_DOMAIN = "prac.amn-lab.com"
         private const val CUSTOM_UA_SUFFIX = "SEB/3.0 PracnetSEBClient/1.0"
         private const val DEFAULT_EXIT_PASSWORD = "dosen2024"
         private const val TAP_THRESHOLD = 5
         private const val TAP_TIMEOUT_MS = 3000L
+        private const val MAX_VIOLATIONS = 3
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -163,21 +167,28 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         // App benar-benar kehilangan foreground — ini pelanggaran
-        if (!isFinishing) {
+        if (!isFinishing && !isBanned) {
             violationCount++
+            reportViolation()
             handler.post { bringToFront() }
         }
     }
 
     override fun onResume() {
         super.onResume()
+        if (isBanned) {
+            showBannedScreen()
+            return
+        }
         // Tampilkan warning jika ada pelanggaran
         if (violationCount > 0 && webView.visibility == View.VISIBLE) {
-            Toast.makeText(
-                this,
-                "⚠️ Aktivitas keluar aplikasi terdeteksi ($violationCount kali). Pengawas akan diberitahu.",
-                Toast.LENGTH_LONG
-            ).show()
+            val remaining = MAX_VIOLATIONS - violationCount
+            val msg = if (remaining > 0) {
+                "⚠️ Pelanggaran terdeteksi ($violationCount/$MAX_VIOLATIONS). Sisa kesempatan: $remaining"
+            } else {
+                "🚫 Batas pelanggaran tercapai. Akses ujian diblokir."
+            }
+            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
         }
     }
 
@@ -271,6 +282,9 @@ class MainActivity : AppCompatActivity() {
                 progressBar.visibility = View.GONE
 
                 lastLoadedUrl = url
+
+                // Coba ambil student ID dari halaman
+                extractStudentId(view)
 
                 // Inject CSS untuk disable text selection
                 view?.evaluateJavascript(
@@ -465,6 +479,87 @@ class MainActivity : AppCompatActivity() {
         stopLockService()
         try { stopLockTask() } catch (_: Exception) {}
         finishAndRemoveTask()
+    }
+
+    /**
+     * Kirim pelanggaran ke server secara async
+     */
+    private fun reportViolation() {
+        Thread {
+            try {
+                val deviceId = android.provider.Settings.Secure.getString(
+                    contentResolver, android.provider.Settings.Secure.ANDROID_ID
+                )
+                val json = JSONObject().apply {
+                    put("student_id", if (studentId.isNotBlank()) studentId else deviceId)
+                    put("device_id", deviceId)
+                    put("violation_type", "app_exit")
+                    put("timestamp", java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date()))
+                }
+
+                val connection = URL(VIOLATION_URL).openConnection() as HttpURLConnection
+                connection.requestMethod = "POST"
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.doOutput = true
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
+
+                connection.outputStream.use { os ->
+                    os.write(json.toString().toByteArray())
+                }
+
+                if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                    val response = connection.inputStream.bufferedReader().readText()
+                    val result = JSONObject(response)
+                    val banned = result.optBoolean("banned", false)
+
+                    if (banned) {
+                        isBanned = true
+                        runOnUiThread { showBannedScreen() }
+                    }
+                }
+                connection.disconnect()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }.start()
+    }
+
+    /**
+     * Tampilkan layar banned — mahasiswa tidak bisa lanjut ujian
+     */
+    private fun showBannedScreen() {
+        webView.visibility = View.GONE
+        splashView.visibility = View.GONE
+        btnFinishExam.visibility = View.GONE
+        errorView.visibility = View.VISIBLE
+        errorText.text = "🚫 Akses Ujian Diblokir\n\nAnda telah melanggar aturan ujian sebanyak $MAX_VIOLATIONS kali dengan keluar dari aplikasi.\n\nHubungi pengawas untuk informasi lebih lanjut.\n\nDevice ID: ${android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID)}"
+        btnRetry.visibility = View.GONE
+    }
+
+    /**
+     * Ambil student ID dari URL setelah login (Moodle biasanya ada di session)
+     * Dipanggil dari onPageFinished
+     */
+    private fun extractStudentId(view: WebView?) {
+        view?.evaluateJavascript(
+            """
+            (function() {
+                // Coba ambil username dari halaman Moodle
+                var userMenu = document.querySelector('.usertext, .userbutton .usertext, [data-action="user-menu"] span, .logininfo a');
+                if (userMenu) return userMenu.textContent.trim();
+                // Coba dari URL
+                var match = window.location.href.match(/user[/=]([^&/]+)/);
+                if (match) return match[1];
+                return '';
+            })();
+            """.trimIndent()
+        ) { value ->
+            val cleaned = value.replace("\"", "").trim()
+            if (cleaned.isNotBlank() && cleaned != "null") {
+                studentId = cleaned
+            }
+        }
     }
 
     private fun startLockService() {
