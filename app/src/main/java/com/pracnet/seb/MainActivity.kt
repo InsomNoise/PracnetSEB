@@ -394,19 +394,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        startLockTask()
-    }
-
-    override fun onPause() {
-        super.onPause()
-        // Tidak perlu logic di sini — LockService handle bawa app ke foreground
-    }
-
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) {
-            startLockTask()
-        }
+        // Tidak panggil startLockTask() di sini — cukup sekali di onCreate()
     }
 
     private fun startLockService() {

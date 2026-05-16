@@ -1,10 +1,10 @@
 package com.pracnet.seb
 
+import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
-import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -22,17 +22,33 @@ class LockService : Service() {
         override fun run() {
             if (!isRunning) return
 
-            // Bawa app ke foreground terus-menerus
-            val intent = Intent(this@LockService, MainActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            if (!isAppInForeground()) {
+                bringAppToFront()
             }
-            startActivity(intent)
 
-            // Cek setiap 500ms
-            handler.postDelayed(this, 500)
+            // Cek setiap 800ms
+            handler.postDelayed(this, 800)
         }
+    }
+
+    private fun isAppInForeground(): Boolean {
+        val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val appProcesses = activityManager.runningAppProcesses ?: return false
+        for (process in appProcesses) {
+            if (process.processName == packageName) {
+                return process.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+            }
+        }
+        return false
+    }
+
+    private fun bringAppToFront() {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        startActivity(intent)
     }
 
     override fun onCreate() {
@@ -44,7 +60,8 @@ class LockService : Service() {
         val notification = buildNotification()
         startForeground(1, notification)
         isRunning = true
-        handler.post(checkTask)
+        // Delay awal 2 detik agar tidak interfere dengan pin dialog
+        handler.postDelayed(checkTask, 2000)
         return START_STICKY
     }
 
