@@ -77,6 +77,7 @@ if ($method === 'POST') {
         'student_id'     => $input['student_id'] ?? 'unknown',
         'device_id'      => $input['device_id'] ?? 'unknown',
         'violation_type' => $input['violation_type'] ?? 'app_exit',
+        'current_url'    => $input['current_url'] ?? '',
         'timestamp'      => $input['timestamp'] ?? date('Y-m-d H:i:s'),
         'server_time'    => date('Y-m-d H:i:s'),
     ];
@@ -140,7 +141,8 @@ if ($method === 'POST') {
         $summary[$sid]['violations'][] = [
             'type' => $entry['violation_type'],
             'time' => $entry['server_time'],
-            'device' => $entry['device_id']
+            'device' => $entry['device_id'],
+            'url' => $entry['current_url'] ?? ''
         ];
     }
     

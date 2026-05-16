@@ -104,6 +104,10 @@ class MainActivity : AppCompatActivity() {
         // Clear cookies agar tidak ada sesi tumpang tindih
         clearCookies()
 
+        // Load student ID dari session sebelumnya (jika ada)
+        studentId = getSharedPreferences("seb_prefs", MODE_PRIVATE)
+            .getString("student_id", "") ?: ""
+
         setupWebView()
         setupSecretExit()
 
@@ -364,6 +368,33 @@ class MainActivity : AppCompatActivity() {
             var noExam = false
 
             try {
+                // --- Cek status ban dari server terlebih dahulu ---
+                val deviceId = android.provider.Settings.Secure.getString(
+                    contentResolver, android.provider.Settings.Secure.ANDROID_ID
+                )
+                val checkId = if (studentId.isNotBlank()) studentId else deviceId
+                val banCheckUrl = "$VIOLATION_URL?check=1&student_id=$checkId"
+                val banConn = URL(banCheckUrl).openConnection() as HttpURLConnection
+                banConn.connectTimeout = 5000
+                banConn.readTimeout = 5000
+                if (banConn.responseCode == HttpURLConnection.HTTP_OK) {
+                    val banResponse = banConn.inputStream.bufferedReader().readText()
+                    val banJson = JSONObject(banResponse)
+                    if (banJson.optBoolean("banned", false)) {
+                        isBanned = true
+                        violationCount = banJson.optInt("total_violations", MAX_VIOLATIONS)
+                        runOnUiThread { showBannedScreen() }
+                        banConn.disconnect()
+                        return@Thread
+                    } else {
+                        // Server sudah di-reset, unban lokal
+                        isBanned = false
+                        violationCount = banJson.optInt("total_violations", 0)
+                    }
+                }
+                banConn.disconnect()
+
+                // --- Fetch config ---
                 val connection = URL(CONFIG_URL).openConnection() as HttpURLConnection
                 connection.connectTimeout = 8000
                 connection.readTimeout = 8000
@@ -494,6 +525,7 @@ class MainActivity : AppCompatActivity() {
                     put("student_id", if (studentId.isNotBlank()) studentId else deviceId)
                     put("device_id", deviceId)
                     put("violation_type", "app_exit")
+                    put("current_url", lastLoadedUrl ?: "unknown")
                     put("timestamp", java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date()))
                 }
 
@@ -538,26 +570,50 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Ambil student ID dari URL setelah login (Moodle biasanya ada di session)
-     * Dipanggil dari onPageFinished
+     * Ambil student ID dari halaman Moodle setelah login.
+     * Coba beberapa metode untuk mendapatkan username.
      */
     private fun extractStudentId(view: WebView?) {
         view?.evaluateJavascript(
             """
             (function() {
-                // Coba ambil username dari halaman Moodle
-                var userMenu = document.querySelector('.usertext, .userbutton .usertext, [data-action="user-menu"] span, .logininfo a');
-                if (userMenu) return userMenu.textContent.trim();
-                // Coba dari URL
-                var match = window.location.href.match(/user[/=]([^&/]+)/);
-                if (match) return match[1];
+                // Method 1: dari user menu (Moodle 4.x)
+                var el = document.querySelector('[data-userid]');
+                if (el) return el.getAttribute('data-userid');
+                
+                // Method 2: dari class usertext
+                var ut = document.querySelector('.usertext');
+                if (ut) return ut.textContent.trim();
+                
+                // Method 3: dari login info
+                var li = document.querySelector('.logininfo a[href*="user/profile"]');
+                if (li) return li.textContent.trim();
+                
+                // Method 4: dari body class (Moodle adds user ID)
+                var body = document.body.className;
+                var match = body.match(/user-(\d+)/);
+                if (match) return 'uid_' + match[1];
+                
+                // Method 5: dari sesskey hidden input (indicates logged in)
+                var sesskey = document.querySelector('input[name="sesskey"]');
+                if (sesskey) {
+                    // User is logged in, try to get from page header
+                    var header = document.querySelector('.usermenu .userbutton, .userbutton span, #user-menu-toggle');
+                    if (header) return header.textContent.trim();
+                }
+                
                 return '';
             })();
             """.trimIndent()
         ) { value ->
-            val cleaned = value.replace("\"", "").trim()
-            if (cleaned.isNotBlank() && cleaned != "null") {
+            val cleaned = value.replace("\"", "").replace("\\n", "").trim()
+            if (cleaned.isNotBlank() && cleaned != "null" && cleaned.length > 1) {
                 studentId = cleaned
+                // Simpan ke SharedPreferences agar persist
+                getSharedPreferences("seb_prefs", MODE_PRIVATE)
+                    .edit()
+                    .putString("student_id", studentId)
+                    .apply()
             }
         }
     }
