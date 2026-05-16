@@ -2,6 +2,7 @@ package com.pracnet.seb
 
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
@@ -74,6 +75,9 @@ class MainActivity : AppCompatActivity() {
         // --- Kiosk Mode (Lock Task) ---
         startLockTask()
 
+        // --- Start foreground service untuk anti-minimize ---
+        startLockService()
+
         // Init views
         webView = findViewById(R.id.webView)
         splashView = findViewById(R.id.splashView)
@@ -95,6 +99,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnFinishExam.setOnClickListener {
+            stopLockService()
             stopLockTask()
             finish()
         }
@@ -363,6 +368,7 @@ class MainActivity : AppCompatActivity() {
             val enteredPassword = inputPassword.text.toString().trim()
             if (enteredPassword == exitPassword) {
                 dialog.dismiss()
+                stopLockService()
                 stopLockTask()
                 finish()
             } else {
@@ -391,10 +397,11 @@ class MainActivity : AppCompatActivity() {
         startLockTask()
     }
 
-    /**
-     * Detect jika app kehilangan focus (user coba minimize atau tolak pin).
-     * Langsung panggil startLockTask() lagi agar dialog muncul kembali.
-     */
+    override fun onPause() {
+        super.onPause()
+        // Tidak perlu logic di sini — LockService handle bawa app ke foreground
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
@@ -402,11 +409,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onPause() {
-        super.onPause()
-        // Jika app di-pause (user berhasil keluar), segera kembali ke foreground
-        val intent = intent
-        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-        startActivity(intent)
+    private fun startLockService() {
+        val serviceIntent = Intent(this, LockService::class.java)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
+        }
+    }
+
+    private fun stopLockService() {
+        val serviceIntent = Intent(this, LockService::class.java)
+        stopService(serviceIntent)
     }
 }
