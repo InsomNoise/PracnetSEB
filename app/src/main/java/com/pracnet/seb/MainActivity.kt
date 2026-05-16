@@ -390,4 +390,23 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         startLockTask()
     }
+
+    /**
+     * Detect jika app kehilangan focus (user coba minimize atau tolak pin).
+     * Langsung panggil startLockTask() lagi agar dialog muncul kembali.
+     */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            startLockTask()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Jika app di-pause (user berhasil keluar), segera kembali ke foreground
+        val intent = intent
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+        startActivity(intent)
+    }
 }

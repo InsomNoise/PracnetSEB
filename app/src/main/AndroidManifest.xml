@@ -16,6 +16,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:lockTaskMode="always"
+            android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:screenOrientation="portrait">
             <intent-filter>
