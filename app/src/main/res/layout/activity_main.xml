@@ -18,6 +18,20 @@
         android:layout_height="80dp"
         android:layout_gravity="top|start" />
 
+    <!-- Tombol Exit setelah kuis selesai (tersembunyi default) -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnFinishExam"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center"
+        android:layout_marginBottom="24dp"
+        android:text="Selesai &amp; Keluar"
+        android:textSize="14sp"
+        android:backgroundTint="#1B2E4B"
+        android:paddingHorizontal="32dp"
+        android:paddingVertical="12dp"
+        android:visibility="gone" />
+
     <!-- Progress bar di atas -->
     <ProgressBar
         android:id="@+id/progressBar"

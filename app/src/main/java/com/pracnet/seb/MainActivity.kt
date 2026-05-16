@@ -29,6 +29,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var errorText: TextView
     private lateinit var progressBar: ProgressBar
     private lateinit var btnRetry: MaterialButton
+    private lateinit var btnFinishExam: MaterialButton
 
     // Secret exit: tap 5x di pojok kiri atas
     private var tapCount = 0
@@ -73,6 +74,7 @@ class MainActivity : AppCompatActivity() {
         errorText = findViewById(R.id.errorText)
         progressBar = findViewById(R.id.progressBar)
         btnRetry = findViewById(R.id.btnRetry)
+        btnFinishExam = findViewById(R.id.btnFinishExam)
 
         // Clear cookies agar tidak ada sesi tumpang tindih
         clearCookies()
@@ -83,6 +85,11 @@ class MainActivity : AppCompatActivity() {
         btnRetry.setOnClickListener {
             showSplash()
             fetchConfigAndLoad()
+        }
+
+        btnFinishExam.setOnClickListener {
+            stopLockTask()
+            finish()
         }
 
         // Fetch remote config, lalu load URL
@@ -135,6 +142,16 @@ class MainActivity : AppCompatActivity() {
                     val targetQuiz = quizUrl
                     quizUrl = null // Hanya redirect sekali
                     view?.loadUrl(targetQuiz!!)
+                }
+
+                // Detect kuis selesai: halaman review atau summary
+                if (currentUrl.contains("/mod/quiz/review.php") ||
+                    currentUrl.contains("/mod/quiz/summary.php") ||
+                    currentUrl.contains("/mod/quiz/view.php") && quizUrl == null
+                ) {
+                    btnFinishExam.visibility = View.VISIBLE
+                } else {
+                    btnFinishExam.visibility = View.GONE
                 }
             }
 
