@@ -1,9 +1,14 @@
 package com.pracnet.seb
 
 import android.annotation.SuppressLint
+import android.app.ActivityManager
 import android.app.AlertDialog
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.webkit.CookieManager
@@ -46,6 +51,11 @@ class MainActivity : AppCompatActivity() {
     // Simpan URL terakhir untuk auto-reconnect
     private var lastLoadedUrl: String? = null
 
+    // Anti-minimize: track apakah app pernah kehilangan focus
+    private var violationCount = 0
+    private val handler = Handler(Looper.getMainLooper())
+    private var isPinned = false
+
     companion object {
         private const val BASE_URL = "https://prac.amn-lab.com"
         private const val CONFIG_URL = "$BASE_URL/seb-config.json"
@@ -72,10 +82,10 @@ class MainActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_main)
 
-        // --- Kiosk Mode (Lock Task) ---
+        // --- Kiosk Mode (Lock Task) — hanya sekali ---
         startLockTask()
 
-        // --- Start foreground service untuk anti-minimize ---
+        // --- Start foreground service ---
         startLockService()
 
         // Init views
@@ -99,13 +109,115 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnFinishExam.setOnClickListener {
-            stopLockService()
-            stopLockTask()
-            finish()
+            exitApp()
         }
 
         // Fetch remote config, lalu load URL
         fetchConfigAndLoad()
+    }
+
+    /**
+     * Intercept semua hardware key — blokir HOME, RECENT APPS, BACK
+     */
+    override fun dispatchKeyEvent(event: KeyEvent?): Boolean {
+        if (event != null) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_HOME,
+                KeyEvent.KEYCODE_APP_SWITCH,
+                KeyEvent.KEYCODE_MENU -> {
+                    // Blokir tombol-tombol ini
+                    return true
+                }
+                KeyEvent.KEYCODE_BACK -> {
+                    if (event.action == KeyEvent.ACTION_UP) {
+                        if (webView.canGoBack()) {
+                            webView.goBack()
+                        }
+                    }
+                    return true
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        // Dihandle di dispatchKeyEvent
+    }
+
+    /**
+     * Detect saat app kehilangan focus (user berhasil minimize).
+     * Catat sebagai pelanggaran dan bawa kembali.
+     */
+    override fun onPause() {
+        super.onPause()
+        // Jika app di-pause, segera schedule bawa kembali
+        handler.postDelayed({
+            if (!isFinishing) {
+                bringToFront()
+            }
+        }, 100)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // App benar-benar kehilangan foreground — ini pelanggaran
+        if (!isFinishing) {
+            violationCount++
+            handler.post { bringToFront() }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Tampilkan warning jika ada pelanggaran
+        if (violationCount > 0 && webView.visibility == View.VISIBLE) {
+            Toast.makeText(
+                this,
+                "⚠️ Aktivitas keluar aplikasi terdeteksi ($violationCount kali). Pengawas akan diberitahu.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            // Sembunyikan system UI (immersive mode)
+            hideSystemUI()
+            // Cek apakah lock task aktif
+            val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            if (am.lockTaskModeState == ActivityManager.LOCK_TASK_MODE_NONE) {
+                isPinned = false
+            } else {
+                isPinned = true
+            }
+        }
+    }
+
+    /**
+     * Immersive mode — sembunyikan navigation bar dan status bar
+     */
+    @Suppress("DEPRECATION")
+    private fun hideSystemUI() {
+        window.decorView.systemUiVisibility = (
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            or View.SYSTEM_UI_FLAG_FULLSCREEN
+            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        )
+    }
+
+    private fun bringToFront() {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(intent)
     }
 
     private fun clearCookies() {
@@ -144,7 +256,6 @@ class MainActivity : AppCompatActivity() {
         })
 
         webView.webViewClient = object : WebViewClient() {
-            // Blokir navigasi ke luar domain yang diizinkan
             override fun shouldOverrideUrlLoading(
                 view: WebView?,
                 request: WebResourceRequest?
@@ -155,15 +266,13 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                // Pastikan splash hilang dan progress bar selesai
                 splashView.visibility = View.GONE
                 errorView.visibility = View.GONE
                 progressBar.visibility = View.GONE
 
-                // Simpan URL terakhir untuk auto-reconnect
                 lastLoadedUrl = url
 
-                // Inject CSS untuk disable text selection (anti copy-paste)
+                // Inject CSS untuk disable text selection
                 view?.evaluateJavascript(
                     """
                     (function() {
@@ -175,20 +284,20 @@ class MainActivity : AppCompatActivity() {
                     null
                 )
 
-                // Setelah login berhasil, Moodle redirect ke dashboard
-                // Detect ini dan langsung arahkan ke kuis
                 val currentUrl = url ?: return
+
+                // Redirect ke kuis setelah login
                 if (quizUrl != null && (
                     currentUrl.contains("/my/") ||
                     currentUrl.contains("redirect=0") ||
                     currentUrl.endsWith("/") && !currentUrl.contains("/login/")
                 )) {
                     val targetQuiz = quizUrl
-                    quizUrl = null // Hanya redirect sekali
+                    quizUrl = null
                     view?.loadUrl(targetQuiz!!)
                 }
 
-                // Detect kuis selesai: halaman review atau summary
+                // Detect kuis selesai
                 if (currentUrl.contains("/mod/quiz/review.php") ||
                     currentUrl.contains("/mod/quiz/summary.php") ||
                     currentUrl.contains("/mod/quiz/view.php") && quizUrl == null
@@ -205,15 +314,9 @@ class MainActivity : AppCompatActivity() {
                 error: WebResourceError?
             ) {
                 super.onReceivedError(view, request, error)
-                // Hanya handle error untuk main frame
                 if (request?.isForMainFrame == true) {
-                    // Auto-reconnect: retry setelah 3 detik
                     val urlToRetry = lastLoadedUrl ?: FALLBACK_URL
-                    view?.postDelayed({
-                        view.loadUrl(urlToRetry)
-                    }, 3000)
-
-                    // Tampilkan error hanya jika retry juga gagal
+                    view?.postDelayed({ view.loadUrl(urlToRetry) }, 3000)
                     view?.postDelayed({
                         if (progressBar.visibility == View.VISIBLE) {
                             showError(getString(R.string.error_connection))
@@ -229,7 +332,6 @@ class MainActivity : AppCompatActivity() {
                 progressBar.progress = newProgress
             }
 
-            // Blokir file upload
             override fun onShowFileChooser(
                 webView: WebView?,
                 filePathCallback: android.webkit.ValueCallback<Array<android.net.Uri>>?,
@@ -242,14 +344,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Fetch seb-config.json dari server.
-     * Format:
-     * {
-     *   "quiz_url": "https://prac.amn-lab.com/mod/quiz/view.php?id=123",
-     *   "exit_password": "passwordSesi1"
-     * }
-     */
     private fun fetchConfigAndLoad() {
         Thread {
             var targetUrl = FALLBACK_URL
@@ -265,13 +359,11 @@ class MainActivity : AppCompatActivity() {
                     val response = connection.inputStream.bufferedReader().readText()
                     val json = JSONObject(response)
 
-                    // Ambil password dari config
                     val remotePassword = json.optString("exit_password", "")
                     if (remotePassword.isNotBlank()) {
                         exitPassword = remotePassword
                     }
 
-                    // Ambil quiz URL
                     val quizUrl = json.optString("quiz_url", "")
                     if (quizUrl.isNotBlank()) {
                         this@MainActivity.quizUrl = quizUrl
@@ -283,9 +375,7 @@ class MainActivity : AppCompatActivity() {
                 connection.disconnect()
             } catch (e: Exception) {
                 e.printStackTrace()
-                runOnUiThread {
-                    showError(getString(R.string.error_connection))
-                }
+                runOnUiThread { showError(getString(R.string.error_connection)) }
                 return@Thread
             }
 
@@ -296,7 +386,6 @@ class MainActivity : AppCompatActivity() {
                 if (finalNoExam) {
                     showError(getString(R.string.no_exam_active))
                 } else {
-                    // Langsung tampilkan WebView dengan progress bar
                     splashView.visibility = View.GONE
                     webView.visibility = View.VISIBLE
                     progressBar.visibility = View.VISIBLE
@@ -319,11 +408,6 @@ class MainActivity : AppCompatActivity() {
         errorText.text = message
     }
 
-    /**
-     * Secret Exit Mechanism:
-     * Tap 5x cepat di pojok kiri atas layar (area 80dp x 80dp overlay)
-     * → muncul dialog password → masukkan password → app keluar dari Kiosk Mode
-     */
     @SuppressLint("ClickableViewAccessibility")
     private fun setupSecretExit() {
         val secretTapArea = findViewById<View>(R.id.secretTapArea)
@@ -341,7 +425,7 @@ class MainActivity : AppCompatActivity() {
                     showExitDialog()
                 }
             }
-            true // Consume event di area ini
+            true
         }
     }
 
@@ -356,45 +440,31 @@ class MainActivity : AppCompatActivity() {
             .setCancelable(false)
             .create()
 
-        dialog.window?.apply {
-            setBackgroundDrawableResource(android.R.color.transparent)
-        }
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
 
-        btnCancel.setOnClickListener {
-            dialog.dismiss()
-        }
+        btnCancel.setOnClickListener { dialog.dismiss() }
 
         btnConfirmExit.setOnClickListener {
             val enteredPassword = inputPassword.text.toString().trim()
             if (enteredPassword == exitPassword) {
                 dialog.dismiss()
-                stopLockService()
-                stopLockTask()
-                finish()
+                exitApp()
             } else {
                 Toast.makeText(this, "Kode akses tidak valid. Silakan coba kembali.", Toast.LENGTH_SHORT).show()
             }
         }
 
         dialog.show()
-
-        // Set width after show() for it to take effect
         dialog.window?.setLayout(
             (resources.displayMetrics.widthPixels * 0.85).toInt(),
             android.view.WindowManager.LayoutParams.WRAP_CONTENT
         )
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        if (webView.canGoBack()) {
-            webView.goBack()
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // Tidak panggil startLockTask() di sini — cukup sekali di onCreate()
+    private fun exitApp() {
+        stopLockService()
+        try { stopLockTask() } catch (_: Exception) {}
+        finishAndRemoveTask()
     }
 
     private fun startLockService() {
