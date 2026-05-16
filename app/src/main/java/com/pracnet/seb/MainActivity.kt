@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
 import android.webkit.CookieManager
+import android.webkit.DownloadListener
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -41,6 +42,9 @@ class MainActivity : AppCompatActivity() {
     // URL kuis dari remote config (akan di-load setelah login berhasil)
     private var quizUrl: String? = null
 
+    // Simpan URL terakhir untuk auto-reconnect
+    private var lastLoadedUrl: String? = null
+
     companion object {
         private const val BASE_URL = "https://prac.amn-lab.com"
         private const val CONFIG_URL = "$BASE_URL/seb-config.json"
@@ -61,6 +65,9 @@ class MainActivity : AppCompatActivity() {
             WindowManager.LayoutParams.FLAG_SECURE,
             WindowManager.LayoutParams.FLAG_SECURE
         )
+
+        // --- Keep screen always on selama ujian ---
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         setContentView(R.layout.activity_main)
 
@@ -107,12 +114,29 @@ class MainActivity : AppCompatActivity() {
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
-            loadWithOverviewMode = true
-            useWideViewPort = true
+            useWideViewPort = false
+            loadWithOverviewMode = false
+            setSupportZoom(false)
+            builtInZoomControls = false
+            displayZoomControls = false
+
+            // --- Disable file access ---
+            allowFileAccess = false
+            allowContentAccess = false
 
             // --- Custom User-Agent ---
             userAgentString = "$userAgentString $CUSTOM_UA_SUFFIX"
         }
+
+        // --- Disable long-press (copy/paste/select text) ---
+        webView.isLongClickable = false
+        webView.setOnLongClickListener { true }
+        webView.isHapticFeedbackEnabled = false
+
+        // --- Disable file download ---
+        webView.setDownloadListener(DownloadListener { _, _, _, _, _ ->
+            Toast.makeText(this, "Download tidak diizinkan selama ujian.", Toast.LENGTH_SHORT).show()
+        })
 
         webView.webViewClient = object : WebViewClient() {
             // Blokir navigasi ke luar domain yang diizinkan
@@ -130,6 +154,21 @@ class MainActivity : AppCompatActivity() {
                 splashView.visibility = View.GONE
                 errorView.visibility = View.GONE
                 progressBar.visibility = View.GONE
+
+                // Simpan URL terakhir untuk auto-reconnect
+                lastLoadedUrl = url
+
+                // Inject CSS untuk disable text selection (anti copy-paste)
+                view?.evaluateJavascript(
+                    """
+                    (function() {
+                        var style = document.createElement('style');
+                        style.innerHTML = '* { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }';
+                        document.head.appendChild(style);
+                    })();
+                    """.trimIndent(),
+                    null
+                )
 
                 // Setelah login berhasil, Moodle redirect ke dashboard
                 // Detect ini dan langsung arahkan ke kuis
@@ -161,9 +200,20 @@ class MainActivity : AppCompatActivity() {
                 error: WebResourceError?
             ) {
                 super.onReceivedError(view, request, error)
-                // Hanya tampilkan error untuk main frame
+                // Hanya handle error untuk main frame
                 if (request?.isForMainFrame == true) {
-                    showError(getString(R.string.error_connection))
+                    // Auto-reconnect: retry setelah 3 detik
+                    val urlToRetry = lastLoadedUrl ?: FALLBACK_URL
+                    view?.postDelayed({
+                        view.loadUrl(urlToRetry)
+                    }, 3000)
+
+                    // Tampilkan error hanya jika retry juga gagal
+                    view?.postDelayed({
+                        if (progressBar.visibility == View.VISIBLE) {
+                            showError(getString(R.string.error_connection))
+                        }
+                    }, 10000)
                 }
             }
         }
@@ -172,6 +222,17 @@ class MainActivity : AppCompatActivity() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 progressBar.visibility = if (newProgress < 100) View.VISIBLE else View.GONE
                 progressBar.progress = newProgress
+            }
+
+            // Blokir file upload
+            override fun onShowFileChooser(
+                webView: WebView?,
+                filePathCallback: android.webkit.ValueCallback<Array<android.net.Uri>>?,
+                fileChooserParams: FileChooserParams?
+            ): Boolean {
+                Toast.makeText(this@MainActivity, "Upload file tidak diizinkan selama ujian.", Toast.LENGTH_SHORT).show()
+                filePathCallback?.onReceiveValue(null)
+                return true
             }
         }
     }
@@ -292,11 +353,6 @@ class MainActivity : AppCompatActivity() {
 
         dialog.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
-            // Set dialog width to 90% of screen
-            setLayout(
-                (resources.displayMetrics.widthPixels * 0.9).toInt(),
-                android.view.WindowManager.LayoutParams.WRAP_CONTENT
-            )
         }
 
         btnCancel.setOnClickListener {
