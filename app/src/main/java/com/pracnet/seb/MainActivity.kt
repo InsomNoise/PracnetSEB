@@ -54,6 +54,7 @@ class MainActivity : AppCompatActivity() {
     private var isPinned = false
     private var studentId = ""  // Akan diambil dari halaman login
     private var isBanned = false
+    private var isExiting = false  // Flag untuk mencegah false positive saat exit
 
     companion object {
         private const val BASE_URL = "https://prac.amn-lab.com"
@@ -109,6 +110,10 @@ class MainActivity : AppCompatActivity() {
         setupSecretExit()
 
         btnRetry.setOnClickListener {
+            // Jangan reset isBanned di sini — biarkan fetchConfigAndLoad yang tentukan
+            // berdasarkan response server
+            violationCount = 0
+            btnRetry.text = getString(R.string.retry)
             showSplash()
             fetchConfigAndLoad()
         }
@@ -157,28 +162,31 @@ class MainActivity : AppCompatActivity() {
      */
     override fun onPause() {
         super.onPause()
-        // Jika app di-pause, segera schedule bawa kembali
-        handler.postDelayed({
-            if (!isFinishing) {
-                bringToFront()
-            }
-        }, 100)
+        // Tidak perlu bringToFront di sini — LockService sudah handle
+        // onPause bisa terpanggil saat dialog muncul, keyboard muncul, dll
     }
 
     override fun onStop() {
         super.onStop()
         // App benar-benar kehilangan foreground — ini pelanggaran
-        if (!isFinishing && !isBanned) {
+        // Guard: hanya hitung jika:
+        // 1. App tidak sedang exit
+        // 2. App tidak banned
+        // 3. WebView sudah visible (bukan saat splash/dialog)
+        // 4. Activity tidak finishing
+        if (!isExiting && !isFinishing && !isBanned && webView.visibility == View.VISIBLE) {
             violationCount++
             reportViolation()
-            handler.post { bringToFront() }
         }
     }
 
     override fun onResume() {
         super.onResume()
         if (isBanned) {
-            showBannedScreen()
+            // Jangan panggil showBannedScreen() berulang — cukup pastikan state benar
+            if (errorView.visibility != View.VISIBLE) {
+                showBannedScreen()
+            }
             return
         }
         // Tampilkan warning jika ada pelanggaran
@@ -349,10 +357,10 @@ class MainActivity : AppCompatActivity() {
 
                 val currentUrl = url ?: return
 
-                // Detect kuis selesai
+                // Detect kuis selesai — hanya di halaman review (setelah submit)
+                // BUKAN di view.php (halaman sebelum attempt)
                 if (currentUrl.contains("/mod/quiz/review.php") ||
-                    currentUrl.contains("/mod/quiz/summary.php") ||
-                    currentUrl.contains("/mod/quiz/view.php")
+                    currentUrl.contains("/mod/quiz/summary.php")
                 ) {
                     btnFinishExam.visibility = View.VISIBLE
                 } else {
@@ -368,12 +376,18 @@ class MainActivity : AppCompatActivity() {
                 super.onReceivedError(view, request, error)
                 if (request?.isForMainFrame == true) {
                     val urlToRetry = lastLoadedUrl ?: FALLBACK_URL
-                    view?.postDelayed({ view.loadUrl(urlToRetry) }, 3000)
+                    // Auto-retry setelah 3 detik
+                    view?.postDelayed({ 
+                        if (errorView.visibility != View.VISIBLE) {
+                            view.loadUrl(urlToRetry) 
+                        }
+                    }, 3000)
+                    // Tampilkan error kalau setelah 12 detik masih belum load
                     view?.postDelayed({
-                        if (progressBar.visibility == View.VISIBLE) {
+                        if (webView.visibility == View.VISIBLE && progressBar.visibility == View.VISIBLE) {
                             showError(getString(R.string.error_connection))
                         }
-                    }, 10000)
+                    }, 12000)
                 }
             }
         }
@@ -456,8 +470,15 @@ class MainActivity : AppCompatActivity() {
                         banConn.disconnect()
                         return@Thread
                     } else {
+                        // Server sudah di-reset atau belum banned
+                        val wasBanned = isBanned
                         isBanned = false
                         violationCount = banJson.optInt("total_violations", 0)
+                        
+                        // Kalau sebelumnya banned dan sekarang unban, trigger lock task lagi
+                        if (wasBanned) {
+                            runOnUiThread { startLockTask() }
+                        }
                     }
                 }
                 banConn.disconnect()
@@ -560,6 +581,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun exitApp() {
+        isExiting = true
         stopLockService()
         try { stopLockTask() } catch (_: Exception) {}
         finishAndRemoveTask()
