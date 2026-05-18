@@ -352,7 +352,7 @@ class MainActivity : AppCompatActivity() {
                 // Detect kuis selesai
                 if (currentUrl.contains("/mod/quiz/review.php") ||
                     currentUrl.contains("/mod/quiz/summary.php") ||
-                    currentUrl.contains("/mod/quiz/view.php") && quizUrl == null
+                    currentUrl.contains("/mod/quiz/view.php")
                 ) {
                     btnFinishExam.visibility = View.VISIBLE
                 } else {
