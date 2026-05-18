@@ -612,6 +612,7 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * Tampilkan layar banned — mahasiswa tidak bisa lanjut ujian
+     * Tapi ada tombol retry yang cek ulang ke server (kalau dosen sudah reset)
      */
     private fun showBannedScreen() {
         webView.visibility = View.GONE
@@ -619,7 +620,9 @@ class MainActivity : AppCompatActivity() {
         btnFinishExam.visibility = View.GONE
         errorView.visibility = View.VISIBLE
         errorText.text = "🚫 Akses Ujian Diblokir\n\nAnda telah melanggar aturan ujian sebanyak $MAX_VIOLATIONS kali dengan keluar dari aplikasi.\n\nHubungi pengawas untuk informasi lebih lanjut.\n\nDevice ID: ${android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID)}"
-        btnRetry.visibility = View.GONE
+        // Tampilkan tombol retry agar bisa cek ulang setelah dosen reset
+        btnRetry.visibility = View.VISIBLE
+        btnRetry.text = "Periksa Ulang Status"
     }
 
     /**
