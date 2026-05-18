@@ -45,9 +45,6 @@ class MainActivity : AppCompatActivity() {
     // Password dari remote config (fallback ke default)
     private var exitPassword = DEFAULT_EXIT_PASSWORD
 
-    // URL kuis dari remote config (akan di-load setelah login berhasil)
-    private var quizUrl: String? = null
-
     // Simpan URL terakhir untuk auto-reconnect
     private var lastLoadedUrl: String? = null
 
@@ -271,12 +268,51 @@ class MainActivity : AppCompatActivity() {
         })
 
         webView.webViewClient = object : WebViewClient() {
+            /**
+             * URL Filtering ketat untuk mencegah curang.
+             * 
+             * DIIZINKAN:
+             * - /login/          → Halaman login
+             * - /mod/quiz/       → Semua halaman kuis (attempt, view, summary, review)
+             * - /my/             → Dashboard (untuk navigasi ke kuis)
+             * - /course/view.php → Halaman course (untuk klik kuis)
+             * - /theme/          → Asset tema (CSS, JS, gambar)
+             * - /lib/            → Library Moodle (JS, CSS)
+             * - /pluginfile.php  → File soal (gambar dalam soal)
+             * - /question/       → Engine soal
+             * 
+             * DIBLOKIR:
+             * - /message/        → Messaging (bisa kirim jawaban ke teman)
+             * - /user/           → Profil user (lihat peserta)
+             * - /mod/forum/      → Forum (diskusi jawaban)
+             * - /mod/chat/       → Chat (komunikasi real-time)
+             * - /mod/resource/   → Resource/file (contekan)
+             * - /mod/page/       → Halaman materi (contekan)
+             * - /mod/book/       → Book (contekan)
+             * - /mod/url/        → Link eksternal
+             * - /mod/assign/     → Assignment
+             * - /mod/wiki/       → Wiki
+             * - /calendar/       → Kalender
+             * - /badges/         → Badges
+             * - /grade/          → Gradebook
+             * - /blog/           → Blog
+             * - /notes/          → Notes
+             * - /report/         → Reports
+             * - /admin/          → Admin pages
+             * - /contentbank/    → Content bank
+             */
             override fun shouldOverrideUrlLoading(
                 view: WebView?,
                 request: WebResourceRequest?
             ): Boolean {
-                val host = request?.url?.host ?: return false
-                return !host.endsWith(ALLOWED_DOMAIN)
+                val url = request?.url?.toString() ?: return false
+                val host = request.url?.host ?: return false
+
+                // Blokir domain luar
+                if (!host.endsWith(ALLOWED_DOMAIN)) return true
+
+                // Cek path — hanya izinkan yang diperlukan untuk ujian
+                return !isAllowedPath(url)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -290,12 +326,21 @@ class MainActivity : AppCompatActivity() {
                 // Coba ambil student ID dari halaman
                 extractStudentId(view)
 
-                // Inject CSS untuk disable text selection
+                // Inject CSS untuk disable text selection + sembunyikan elemen navigasi berbahaya
                 view?.evaluateJavascript(
                     """
                     (function() {
                         var style = document.createElement('style');
-                        style.innerHTML = '* { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }';
+                        style.innerHTML = '* { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; } ' +
+                            '.usermenu { display: none !important; } ' +
+                            '#user-menu-toggle { display: none !important; } ' +
+                            'a[href*="/message/"] { display: none !important; } ' +
+                            'a[href*="/user/"] { display: none !important; } ' +
+                            'a[href*="/calendar/"] { display: none !important; } ' +
+                            'a[href*="/grade/"] { display: none !important; } ' +
+                            '.popover-region-notifications { display: none !important; } ' +
+                            '.popover-region-messages { display: none !important; } ' +
+                            '#nav-drawer a:not([href*="/my/"]):not([href*="/course/"]):not([href*="/mod/quiz/"]) { display: none !important; }';
                         document.head.appendChild(style);
                     })();
                     """.trimIndent(),
@@ -303,17 +348,6 @@ class MainActivity : AppCompatActivity() {
                 )
 
                 val currentUrl = url ?: return
-
-                // Redirect ke kuis setelah login
-                if (quizUrl != null && (
-                    currentUrl.contains("/my/") ||
-                    currentUrl.contains("redirect=0") ||
-                    currentUrl.endsWith("/") && !currentUrl.contains("/login/")
-                )) {
-                    val targetQuiz = quizUrl
-                    quizUrl = null
-                    view?.loadUrl(targetQuiz!!)
-                }
 
                 // Detect kuis selesai
                 if (currentUrl.contains("/mod/quiz/review.php") ||
@@ -362,11 +396,46 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Cek apakah URL diizinkan untuk diakses selama ujian.
+     * Whitelist approach — hanya path yang eksplisit diizinkan yang bisa diakses.
+     */
+    private fun isAllowedPath(url: String): Boolean {
+        val path = android.net.Uri.parse(url).path ?: return true
+
+        // Whitelist: path yang diizinkan
+        val allowedPaths = listOf(
+            "/login/",           // Login
+            "/mod/quiz/",        // Semua halaman kuis
+            "/my/",              // Dashboard
+            "/course/view.php",  // Halaman course
+            "/theme/",           // Asset tema
+            "/lib/",             // Library JS/CSS
+            "/pluginfile.php",   // File dalam soal (gambar, dll)
+            "/question/",        // Question engine
+            "/draftfile.php",    // Draft files
+            "/tokenpluginfile.php", // Token-based files
+        )
+
+        // Root URL (homepage)
+        if (path == "/" || path.isEmpty()) return true
+
+        // Cek apakah path cocok dengan whitelist
+        for (allowed in allowedPaths) {
+            if (path.startsWith(allowed)) return true
+        }
+
+        // Izinkan juga static assets (CSS, JS, images, fonts)
+        val extension = path.substringAfterLast(".", "")
+        val allowedExtensions = listOf("css", "js", "png", "jpg", "jpeg", "gif", "svg", "woff", "woff2", "ttf", "ico")
+        if (extension in allowedExtensions) return true
+
+        // Semua path lain diblokir
+        return false
+    }
+
     private fun fetchConfigAndLoad() {
         Thread {
-            var targetUrl = FALLBACK_URL
-            var noExam = false
-
             try {
                 // --- Cek status ban dari server terlebih dahulu ---
                 val deviceId = android.provider.Settings.Secure.getString(
@@ -387,14 +456,13 @@ class MainActivity : AppCompatActivity() {
                         banConn.disconnect()
                         return@Thread
                     } else {
-                        // Server sudah di-reset, unban lokal
                         isBanned = false
                         violationCount = banJson.optInt("total_violations", 0)
                     }
                 }
                 banConn.disconnect()
 
-                // --- Fetch config ---
+                // --- Fetch config (password) ---
                 val connection = URL(CONFIG_URL).openConnection() as HttpURLConnection
                 connection.connectTimeout = 8000
                 connection.readTimeout = 8000
@@ -408,14 +476,6 @@ class MainActivity : AppCompatActivity() {
                     if (remotePassword.isNotBlank()) {
                         exitPassword = remotePassword
                     }
-
-                    val quizUrl = json.optString("quiz_url", "")
-                    if (quizUrl.isNotBlank()) {
-                        this@MainActivity.quizUrl = quizUrl
-                        targetUrl = FALLBACK_URL
-                    } else {
-                        noExam = true
-                    }
                 }
                 connection.disconnect()
             } catch (e: Exception) {
@@ -424,18 +484,11 @@ class MainActivity : AppCompatActivity() {
                 return@Thread
             }
 
-            val finalUrl = targetUrl
-            val finalNoExam = noExam
-
             runOnUiThread {
-                if (finalNoExam) {
-                    showError(getString(R.string.no_exam_active))
-                } else {
-                    splashView.visibility = View.GONE
-                    webView.visibility = View.VISIBLE
-                    progressBar.visibility = View.VISIBLE
-                    webView.loadUrl(finalUrl)
-                }
+                splashView.visibility = View.GONE
+                webView.visibility = View.VISIBLE
+                progressBar.visibility = View.VISIBLE
+                webView.loadUrl(FALLBACK_URL)
             }
         }.start()
     }
